@@ -2,7 +2,7 @@
 
 다람쥐가 되어 숲에 숨겨진 도토리를 찾고, 재료를 모아 나만의 둥지를 짓는 힐링 복셀 웹게임.
 
-**▶ 플레이: https://ykzmfzh.github.io/acorn-grove/**
+**▶ 플레이: https://zmffhemzhemrpdla.github.io/acorn-grove/**
 
 - 컴퓨터: WASD 이동 · 트랙패드 스와이프/드래그 시점 · Space 점프(꾹 누르면 활강) · E 냄새 탐지 · 클릭 캐기 · 우클릭 놓기
 - 모바일: 왼쪽 드래그 이동 · 오른쪽 드래그 시점 · 터치 버튼
