@@ -26,10 +26,11 @@
     padding: 10px 20px; font-size: 16px; opacity: 0; transition: opacity .3s; text-align: center;
     max-width: 80vw; }
 
-  #jumpText { position: fixed; z-index: 9; pointer-events: none; display: none;
+  #jumpText, #eatText { position: fixed; z-index: 9; pointer-events: none; display: none;
     transform: translate(-50%, -100%); font-size: 15px; font-weight: 900; color: #fff;
     text-shadow: 0 1px 0 #7a5230, 0 -1px 0 #7a5230, 1px 0 0 #7a5230, -1px 0 0 #7a5230, 0 2px 4px rgba(0,0,0,.35);
     letter-spacing: 1px; white-space: nowrap; }
+  #eatText { color: #ffe9a8; }
 
   #crosshair { top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px;
     border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 3px rgba(0,0,0,.5); }
@@ -74,6 +75,7 @@
 <div id="toast" class="overlay"></div>
 <div id="crosshair" class="overlay"></div>
 <div id="jumpText">짜암푸!</div>
+<div id="eatText">냠</div>
 <div id="invBar" class="overlay"></div>
 
 <div id="joyBase" class="overlay" style="pointer-events:none;"></div>
@@ -106,7 +108,7 @@ import * as THREE from './three.module.min.js';
 const SIZE = 96, HEIGHT = 44, CHUNK = 16, NCH = SIZE / CHUNK;
 const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAF = 5;
 const HALF = 0.26, PH = 0.72;            // 플레이어 AABB
-const G = 22, JUMP_V = 7.6, SPEED = 4.3, CLIMB_V = 3.2, GLIDE_FALL = -1.7;
+const G = 22, JUMP_V = 7.6, SUPER_JUMP_V = 20, SPEED = 4.3, CLIMB_V = 3.2, GLIDE_FALL = -1.7;
 const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 
 // ---------- 노이즈 ----------
@@ -423,6 +425,19 @@ let selType = WOOD;
 // ---------- 입력 ----------
 const keys = {};
 let jumpHeld = false;
+// 스페이스(점프 버튼) 3연타 = 슈퍼 점프
+let spacePresses = [], superJumpReq = false, superCdUntil = 0;
+function pressJump() {
+  jumpHeld = true;
+  const now = performance.now();
+  spacePresses = spacePresses.filter(t => now - t < 700);
+  spacePresses.push(now);
+  if (spacePresses.length >= 3 && now > superCdUntil) {
+    superJumpReq = true;
+    superCdUntil = now + 1500;
+    spacePresses = [];
+  }
+}
 const joy = { active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 };
 const cam = { id: -1, lx: 0, ly: 0 };
 let started = false;
@@ -430,7 +445,7 @@ let started = false;
 addEventListener('keydown', e => {
   if (e.repeat) return;
   keys[e.code] = true;
-  if (e.code === 'Space') { jumpHeld = true; e.preventDefault(); }
+  if (e.code === 'Space') { pressJump(); e.preventDefault(); }
   if (e.code === 'KeyE') toggleSniff();
   const nums = { Digit1: DIRT, Digit2: STONE, Digit3: WOOD, Digit4: LEAF };
   if (nums[e.code]) selectType(nums[e.code]);
@@ -521,7 +536,7 @@ function bindBtn(id, down, up) {
   if (up) el.addEventListener('touchend', e => { e.preventDefault(); up(); });
   return el;
 }
-bindBtn('btnJump', () => { jumpHeld = true; }, () => { jumpHeld = false; });
+bindBtn('btnJump', () => pressJump(), () => { jumpHeld = false; });
 const sniffBtn = bindBtn('btnSniff', () => toggleSniff());
 bindBtn('btnDig', () => digBlock());
 bindBtn('btnPlace', () => placeBlock());
@@ -567,8 +582,8 @@ function toggleSniff() {
 }
 
 document.getElementById('controlsHelp').innerHTML = IS_TOUCH
-  ? '👈 왼쪽 화면 드래그 — 이동<br>👉 오른쪽 화면 드래그 — 시점<br>🦘 <b>점프</b> 꾹 누르면 활강 · 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>냄새</b>로 숨겨진 도토리 탐지<br>⛏️ <b>캐기/놓기</b>로 재료를 모아 집을 지어요'
-  : '🖱️ 트랙패드 <b>두 손가락 스와이프</b> 또는 드래그 — 시점 · 핀치 — 줌<br>🏃 <b>WASD</b> 이동 · <b>Space</b> 점프, 공중에서 꾹 누르면 활강<br>🌳 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>E</b> — 냄새로 숨겨진 도토리 탐지<br>⛏️ 클릭 캐기 · 우클릭 놓기 · <b>1~4</b> 재료 선택';
+  ? '👈 왼쪽 화면 드래그 — 이동<br>👉 오른쪽 화면 드래그 — 시점<br>🦘 <b>점프</b> 꾹 누르면 활강 · <b>3연타</b>하면 슈퍼 점프!<br>🌳 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>냄새</b>로 숨겨진 도토리 탐지<br>⛏️ <b>캐기/놓기</b>로 재료를 모아 집을 지어요'
+  : '🖱️ 트랙패드 <b>두 손가락 스와이프</b> 또는 드래그 — 시점 · 핀치 — 줌<br>🏃 <b>WASD</b> 이동 · <b>Space</b> 점프, 공중에서 꾹 누르면 활강<br>⚡ <b>Space 3연타</b> — 나무 꼭대기까지 슈퍼 점프!<br>🌳 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>E</b> — 냄새로 숨겨진 도토리 탐지<br>⛏️ 클릭 캐기 · 우클릭 놓기 · <b>1~4</b> 재료 선택';
 const startBtn = document.getElementById('startBtn');
 function startGame() {
   document.getElementById('splash').style.display = 'none';
@@ -657,8 +672,9 @@ function groundYBelow() {
 // ---------- 메인 루프 ----------
 const clock = new THREE.Clock();
 let time = 0;
-let jumpFxT = -1;
+let jumpFxT = -1, eatFxT = -1, launchUntil = 0;
 const jumpTextEl = document.getElementById('jumpText');
+const eatTextEl = document.getElementById('eatText');
 window.__dbg = () => ({ pos: pos.toArray().map(v => +v.toFixed(2)), yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), camDist: +camDist.toFixed(2), onGround, climbing, gliding, collected: collectedCount, started });
 function frame() {
   requestAnimationFrame(frame);
@@ -681,13 +697,14 @@ function frame() {
   const mdx = fx * iz + rx * ix;
   const mdz = fz * iz + rz * ix;
 
-  // 나무 타기 판정: 진행 방향의 나무 기둥
+  // 나무 타기 판정: 진행 방향의 나무 기둥/잎 (슈퍼 점프 직후엔 잠시 비활성)
   climbing = false;
-  if (mlen > 0.15) {
+  if (mlen > 0.15 && time > launchUntil) {
     const nx = mdx / (Math.hypot(mdx, mdz) || 1), nz = mdz / (Math.hypot(mdx, mdz) || 1);
     const cx = Math.floor(pos.x + nx * 0.45), cz = Math.floor(pos.z + nz * 0.45);
     for (const dy of [0.15, 0.55]) {
-      if (getBlock(cx, Math.floor(pos.y + dy), cz) === WOOD) { climbing = true; break; }
+      const b = getBlock(cx, Math.floor(pos.y + dy), cz);
+      if (b === WOOD || b === LEAF) { climbing = true; break; }
     }
   }
 
@@ -699,6 +716,14 @@ function frame() {
     if (jumpHeld && !onGround && vel.y < GLIDE_FALL) { vel.y = GLIDE_FALL; gliding = true; }
   }
   if (jumpHeld && onGround) { vel.y = JUMP_V; onGround = false; jumpFxT = time; }
+  if (superJumpReq) {
+    superJumpReq = false;
+    vel.y = SUPER_JUMP_V;
+    onGround = false;
+    climbing = false;
+    launchUntil = time + 0.55;
+    jumpFxT = time;
+  }
 
   const spd = climbing ? SPEED * 0.55 : (gliding ? SPEED * 1.2 : SPEED);
   vel.x = mdx * spd; vel.z = mdz * spd;
@@ -751,18 +776,24 @@ function frame() {
   camera.position.copy(camTarget).addScaledVector(cdir, cdist);
   camera.lookAt(camTarget);
 
-  // 점프 텍스트 "짜암푸!" — 다람쥐 머리 위를 따라다니며 떠올랐다 사라짐
-  const jumpAge = time - jumpFxT;
-  if (jumpFxT >= 0 && jumpAge < 0.8) {
-    const p = jumpAge / 0.8;
-    const v = new THREE.Vector3(pos.x, pos.y + 1.05 + p * 0.6, pos.z).project(camera);
-    if (v.z < 1) {
-      jumpTextEl.style.display = 'block';
-      jumpTextEl.style.left = (v.x * 0.5 + 0.5) * innerWidth + 'px';
-      jumpTextEl.style.top = (-v.y * 0.5 + 0.5) * innerHeight + 'px';
-      jumpTextEl.style.opacity = p < 0.6 ? 1 : (1 - (p - 0.6) / 0.4);
-    } else jumpTextEl.style.display = 'none';
-  } else jumpTextEl.style.display = 'none';
+  // 머리 위 텍스트 ("짜암푸!" / "냠") — 다람쥐를 따라다니며 떠올랐다 사라짐
+  function headText(el, fxT, xShift) {
+    const age = time - fxT;
+    if (fxT >= 0 && age < 0.8) {
+      const p = age / 0.8;
+      const v = new THREE.Vector3(pos.x, pos.y + 1.05 + p * 0.6, pos.z).project(camera);
+      if (v.z < 1) {
+        el.style.display = 'block';
+        el.style.left = (v.x * 0.5 + 0.5) * innerWidth + xShift + 'px';
+        el.style.top = (-v.y * 0.5 + 0.5) * innerHeight + 'px';
+        el.style.opacity = p < 0.6 ? 1 : (1 - (p - 0.6) / 0.4);
+        return;
+      }
+    }
+    el.style.display = 'none';
+  }
+  headText(jumpTextEl, jumpFxT, 0);
+  headText(eatTextEl, eatFxT, eatFxT > jumpFxT - 0.8 && jumpFxT > eatFxT - 0.8 ? 34 : 0);
 
   // 블록 하이라이트
   if (started) {
@@ -790,6 +821,7 @@ function frame() {
     if (d < 0.95) {
       a.collected = true;
       scene.remove(a.mesh);
+      eatFxT = time;
       collectedCount++;
       if (a.hidden) hiddenFound++;
       hudCount.textContent = collectedCount;
