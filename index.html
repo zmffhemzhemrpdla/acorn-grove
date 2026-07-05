@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>도토리 그로브</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; background: #9fd4f4;
+    font-family: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; }
+
+  .overlay { position: fixed; pointer-events: none; z-index: 10; }
+
+  #hud { top: max(10px, env(safe-area-inset-top)); left: 12px;
+    background: rgba(255,255,255,.85); border-radius: 14px; padding: 8px 14px;
+    font-size: 16px; font-weight: 700; color: #5b4025; box-shadow: 0 2px 6px rgba(0,0,0,.15); }
+  #hud small { font-weight: 500; color: #8a6f52; }
+
+  #sniffHint { top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    background: rgba(90,60,20,.75); color: #ffe9b0; border-radius: 999px;
+    padding: 6px 16px; font-size: 14px; display: none; }
+
+  #toast { bottom: 22%; left: 50%; transform: translateX(-50%);
+    background: rgba(60,40,15,.82); color: #fff6dd; border-radius: 14px;
+    padding: 10px 20px; font-size: 16px; opacity: 0; transition: opacity .3s; text-align: center;
+    max-width: 80vw; }
+
+  #jumpText { position: fixed; z-index: 9; pointer-events: none; display: none;
+    transform: translate(-50%, -100%); font-size: 15px; font-weight: 900; color: #fff;
+    text-shadow: 0 1px 0 #7a5230, 0 -1px 0 #7a5230, 1px 0 0 #7a5230, -1px 0 0 #7a5230, 0 2px 4px rgba(0,0,0,.35);
+    letter-spacing: 1px; white-space: nowrap; }
+
+  #crosshair { top: 50%; left: 50%; width: 6px; height: 6px; margin: -3px;
+    border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 0 3px rgba(0,0,0,.5); }
+
+  #invBar { bottom: max(12px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+    display: flex; gap: 8px; pointer-events: auto; }
+  .slot { width: 52px; height: 52px; border-radius: 12px; border: 3px solid rgba(255,255,255,.55);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; font-size: 12px; font-weight: 700; text-shadow: 0 1px 2px rgba(0,0,0,.5);
+    cursor: pointer; }
+  .slot.sel { border-color: #ffd95e; box-shadow: 0 0 10px rgba(255,217,94,.8); }
+  .slot .cnt { font-size: 13px; }
+
+  /* 터치 컨트롤 */
+  #joyBase { width: 110px; height: 110px; border-radius: 50%; background: rgba(255,255,255,.18);
+    border: 2px solid rgba(255,255,255,.4); display: none; }
+  #joyThumb { width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,.55);
+    position: fixed; display: none; z-index: 11; pointer-events: none; }
+  .tbtn { position: fixed; z-index: 12; border: none; border-radius: 50%;
+    background: rgba(255,255,255,.30); color: #4a3520; font-weight: 700;
+    box-shadow: 0 2px 5px rgba(0,0,0,.2); pointer-events: auto;
+    display: none; align-items: center; justify-content: center; flex-direction: column; }
+  .tbtn:active, .tbtn.on { background: rgba(255,220,120,.75); }
+
+  #splash { position: fixed; inset: 0; z-index: 30; background: rgba(120,170,90,.35);
+    backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; }
+  #splashCard { background: rgba(255,252,240,.96); border-radius: 22px; padding: 28px 34px;
+    max-width: 420px; margin: 16px; text-align: center; color: #5b4025;
+    box-shadow: 0 10px 40px rgba(40,30,10,.3); }
+  #splashCard h1 { margin: 0 0 4px; font-size: 30px; }
+  #splashCard p.sub { margin: 0 0 16px; color: #8a6f52; font-size: 14px; }
+  #controlsHelp { text-align: left; font-size: 13.5px; line-height: 1.8; color: #6b543a;
+    background: #f4ecd9; border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
+  #startBtn { border: none; background: #d98a2b; color: #fff; font-size: 19px; font-weight: 800;
+    padding: 12px 44px; border-radius: 999px; cursor: pointer; box-shadow: 0 4px 0 #a5641a; }
+  #startBtn:active { transform: translateY(3px); box-shadow: 0 1px 0 #a5641a; }
+</style>
+</head>
+<body>
+<div id="hud" class="overlay">🌰 <span id="acornCount">0</span>/<span id="acornTotal">?</span> <small>· 숨겨진 <span id="hiddenCount">0</span>/<span id="hiddenTotal">?</span></small></div>
+<div id="sniffHint" class="overlay"></div>
+<div id="toast" class="overlay"></div>
+<div id="crosshair" class="overlay"></div>
+<div id="jumpText">짜암푸!</div>
+<div id="invBar" class="overlay"></div>
+
+<div id="joyBase" class="overlay" style="pointer-events:none;"></div>
+<div id="joyThumb"></div>
+<button id="btnJump" class="tbtn" style="right:22px; bottom:120px; width:76px; height:76px; font-size:15px;">점프</button>
+<button id="btnSniff" class="tbtn" style="right:106px; bottom:92px; width:60px; height:60px; font-size:13px;">냄새</button>
+<button id="btnDig" class="tbtn" style="right:22px; bottom:214px; width:60px; height:60px; font-size:13px;">캐기</button>
+<button id="btnPlace" class="tbtn" style="right:100px; bottom:176px; width:60px; height:60px; font-size:13px;">놓기</button>
+
+<div id="splash">
+  <div id="splashCard">
+    <h1>🐿️ 도토리 그로브</h1>
+    <p class="sub">숨겨진 도토리를 찾고, 나만의 둥지를 지어요</p>
+    <div id="controlsHelp"></div>
+    <button id="startBtn" disabled>불러오는 중…</button>
+  </div>
+</div>
+
+<script>
+// 게임 로드 실패 시 원인을 시작 화면에 표시 (구형 기기 진단용)
+window.addEventListener('error', function (e) {
+  var el = document.getElementById('controlsHelp');
+  if (el && !window.__gameLoaded) el.innerHTML = '⚠️ 게임을 불러오지 못했어요.<br><small>' + (e.message || '알 수 없는 오류') + '</small><br>브라우저를 최신 버전으로 업데이트하거나 다른 브라우저(Safari/Chrome)로 열어보세요.';
+});
+</script>
+<script type="module">
+import * as THREE from './three.module.min.js';
+
+// ---------- 상수 ----------
+const SIZE = 96, HEIGHT = 44, CHUNK = 16, NCH = SIZE / CHUNK;
+const AIR = 0, GRASS = 1, DIRT = 2, STONE = 3, WOOD = 4, LEAF = 5;
+const HALF = 0.26, PH = 0.72;            // 플레이어 AABB
+const G = 22, JUMP_V = 7.6, SPEED = 4.3, CLIMB_V = 3.2, GLIDE_FALL = -1.7;
+const IS_TOUCH = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+
+// ---------- 노이즈 ----------
+function hash2(x, z) {
+  let n = (Math.imul(x, 374761393) + Math.imul(z, 668265263)) | 0;
+  n = Math.imul(n ^ (n >>> 13), 1274126177);
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296;
+}
+function noise2(x, z) {
+  const xi = Math.floor(x), zi = Math.floor(z), xf = x - xi, zf = z - zi;
+  const u = xf * xf * (3 - 2 * xf), v = zf * zf * (3 - 2 * zf);
+  return hash2(xi, zi) * (1 - u) * (1 - v) + hash2(xi + 1, zi) * u * (1 - v)
+       + hash2(xi, zi + 1) * (1 - u) * v + hash2(xi + 1, zi + 1) * u * v;
+}
+function hash3(x, y, z) { return hash2(x * 7 + y * 131, z * 13 + y * 57); }
+
+// ---------- 월드 데이터 ----------
+const world = new Uint8Array(SIZE * HEIGHT * SIZE);
+const baseH = new Int16Array(SIZE * SIZE);
+const bIdx = (x, y, z) => (x * SIZE + z) * HEIGHT + y;
+function getBlock(x, y, z) {
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 0 || y >= HEIGHT) return AIR;
+  return world[bIdx(x, y, z)];
+}
+const solid = (x, y, z) => getBlock(x, y, z) !== AIR;
+
+const ROCK_H = 17;
+for (let x = 0; x < SIZE; x++) for (let z = 0; z < SIZE; z++) {
+  const h = Math.floor(7 + noise2(x / 26 + 7.3, z / 26 + 3.1) * 9 + noise2(x / 9 + 41.7, z / 9 + 17.2) * 3.5);
+  baseH[x * SIZE + z] = h;
+  for (let y = 0; y <= h; y++) {
+    let t = STONE;
+    if (y === h) t = h >= ROCK_H ? STONE : GRASS;
+    else if (y >= h - 2 && h < ROCK_H) t = DIRT;
+    world[bIdx(x, y, z)] = t;
+  }
+}
+const colH = (x, z) => baseH[x * SIZE + z];
+
+// 나무 심기 (기둥이 잎지붕 꼭대기까지 이어져서 타고 올라갈 수 있음)
+const trees = [];
+for (let tries = 0; tries < 900 && trees.length < 60; tries++) {
+  const tx = 5 + Math.floor(hash2(tries, 991) * (SIZE - 10));
+  const tz = 5 + Math.floor(hash2(tries, 445) * (SIZE - 10));
+  const h = colH(tx, tz);
+  if (h >= ROCK_H) continue;
+  if (trees.some(t => (t.x - tx) ** 2 + (t.z - tz) ** 2 < 25)) continue;
+  const th = 4 + Math.floor(hash2(tx, tz) * 3);
+  const cy = h + th + 1;
+  if (cy + 2 >= HEIGHT) continue;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) {
+    if (dx * dx + dz * dz + dy * dy * 2 > 5.3) continue;
+    const x = tx + dx, y = cy + dy, z = tz + dz;
+    if (getBlock(x, y, z) === AIR) world[bIdx(x, y, z)] = LEAF;
+  }
+  for (let y = h + 1; y <= cy + 1; y++) world[bIdx(tx, y, tz)] = WOOD;
+  trees.push({ x: tx, z: tz, h, top: cy + 1 });
+}
+
+// ---------- 청크 메싱 ----------
+const FACES = [
+  { d: [1, 0, 0],  c: [[1,0,0],[1,1,0],[1,1,1],[1,0,1]], sh: 0.80, k: 's' },
+  { d: [-1, 0, 0], c: [[0,0,1],[0,1,1],[0,1,0],[0,0,0]], sh: 0.80, k: 's' },
+  { d: [0, 1, 0],  c: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]], sh: 1.00, k: 't' },
+  { d: [0, -1, 0], c: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]], sh: 0.55, k: 'b' },
+  { d: [0, 0, 1],  c: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]], sh: 0.90, k: 's' },
+  { d: [0, 0, -1], c: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]], sh: 0.70, k: 's' },
+];
+const hex = n => [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
+const PAL = {
+  [GRASS]: { t: hex(0x74c04b), s: hex(0x7fa04f), b: hex(0x8a6642) },
+  [DIRT]:  { t: hex(0x96703f), s: hex(0x96703f), b: hex(0x96703f) },
+  [STONE]: { t: hex(0xaaaab0), s: hex(0x9d9da4), b: hex(0x8c8c92) },
+  [WOOD]:  { t: hex(0x9c6a3c), s: hex(0x8a5a33), b: hex(0x7a4e2c) },
+  [LEAF]:  { t: hex(0x5aa64f), s: hex(0x55a04b), b: hex(0x4b8f43) },
+};
+const scene = new THREE.Scene();
+const terrainMat = new THREE.MeshBasicMaterial({ vertexColors: true });
+const chunkMeshes = [];
+function buildChunk(cx, cz) {
+  const posA = [], colA = [], idxA = [];
+  for (let x = cx * CHUNK; x < (cx + 1) * CHUNK; x++)
+  for (let z = cz * CHUNK; z < (cz + 1) * CHUNK; z++)
+  for (let y = 0; y < HEIGHT; y++) {
+    const t = world[bIdx(x, y, z)];
+    if (!t) continue;
+    const jit = 0.92 + hash3(x, y, z) * 0.16;
+    for (const f of FACES) {
+      if (getBlock(x + f.d[0], y + f.d[1], z + f.d[2]) !== AIR) continue;
+      const base = posA.length / 3;
+      const c = PAL[t][f.k];
+      const r = c[0] * f.sh * jit, g = c[1] * f.sh * jit, b = c[2] * f.sh * jit;
+      for (const v of f.c) { posA.push(x + v[0], y + v[1], z + v[2]); colA.push(r, g, b); }
+      idxA.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(posA, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colA, 3));
+  geo.setIndex(idxA);
+  const old = chunkMeshes[cx * NCH + cz];
+  if (old) { scene.remove(old); old.geometry.dispose(); }
+  const mesh = new THREE.Mesh(geo, terrainMat);
+  chunkMeshes[cx * NCH + cz] = mesh;
+  scene.add(mesh);
+}
+for (let cx = 0; cx < NCH; cx++) for (let cz = 0; cz < NCH; cz++) buildChunk(cx, cz);
+
+function setBlock(x, y, z, t) {
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE || y < 1 || y >= HEIGHT) return;
+  world[bIdx(x, y, z)] = t;
+  const cx = Math.floor(x / CHUNK), cz = Math.floor(z / CHUNK);
+  buildChunk(cx, cz);
+  if (x % CHUNK === 0 && cx > 0) buildChunk(cx - 1, cz);
+  if (x % CHUNK === CHUNK - 1 && cx < NCH - 1) buildChunk(cx + 1, cz);
+  if (z % CHUNK === 0 && cz > 0) buildChunk(cx, cz - 1);
+  if (z % CHUNK === CHUNK - 1 && cz < NCH - 1) buildChunk(cx, cz + 1);
+}
+
+// ---------- 렌더러 / 카메라 / 조명 ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x9fd4f4);
+document.body.appendChild(renderer.domElement);
+scene.fog = new THREE.Fog(0x9fd4f4, 45, 135);
+
+const camera = new THREE.PerspectiveCamera(66, innerWidth / innerHeight, 0.1, 400);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa877, 1.05));
+const sun = new THREE.DirectionalLight(0xfff0d0, 0.9);
+sun.position.set(60, 100, 40);
+scene.add(sun);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ---------- 구름 ----------
+const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.88 });
+const clouds = [];
+for (let i = 0; i < 6; i++) {
+  const g = new THREE.Group();
+  const n = 3 + Math.floor(hash2(i, 8) * 2);
+  for (let j = 0; j < n; j++) {
+    const b = new THREE.Mesh(new THREE.BoxGeometry(3 + hash2(i, j) * 5, 1.1, 2 + hash2(j, i) * 3), cloudMat);
+    b.position.set(j * 2.4 - n, hash2(i, j + 9) * 0.6, hash2(j, i + 7) * 2);
+    g.add(b);
+  }
+  g.position.set(hash2(i, 3) * SIZE, 36 + hash2(i, 5) * 5, hash2(i, 4) * SIZE);
+  g.userData.speed = 0.4 + hash2(i, 6) * 0.5;
+  clouds.push(g); scene.add(g);
+}
+
+// ---------- 꽃 (곤충 없음 — 순수 장식) ----------
+{
+  const flowerGeo = new THREE.SphereGeometry(0.09, 8, 6);
+  const flowerMat = new THREE.MeshLambertMaterial();
+  const flowers = new THREE.InstancedMesh(flowerGeo, flowerMat, 140);
+  const flowerColors = [0xf2789f, 0xfff6ee, 0xf2c14e, 0x9b8cf2];
+  const m = new THREE.Matrix4();
+  let placed = 0;
+  for (let i = 0; i < 3000 && placed < 140; i++) {
+    const x = 2 + Math.floor(hash2(i, 77) * (SIZE - 4));
+    const z = 2 + Math.floor(hash2(i, 191) * (SIZE - 4));
+    const h = colH(x, z);
+    if (h >= ROCK_H || getBlock(x, h, z) !== GRASS) continue;
+    m.makeTranslation(x + 0.2 + hash2(i, 5) * 0.6, h + 1.07, z + 0.2 + hash2(i, 6) * 0.6);
+    flowers.setMatrixAt(placed, m);
+    flowers.setColorAt(placed, new THREE.Color(flowerColors[i % 4]));
+    placed++;
+  }
+  flowers.count = placed;
+  flowers.instanceMatrix.needsUpdate = true;
+  scene.add(flowers);
+}
+
+// ---------- 도토리 ----------
+function makeAcorn() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 8), new THREE.MeshLambertMaterial({ color: 0xb07a3e }));
+  body.scale.set(1, 1.25, 1);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.155, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2.3), new THREE.MeshLambertMaterial({ color: 0x6d4726 }));
+  cap.position.y = 0.055;
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.03, 0.09, 6), new THREE.MeshLambertMaterial({ color: 0x5a3a1e }));
+  stem.position.y = 0.22;
+  g.add(body, cap, stem);
+  return g;
+}
+const acorns = [];
+function addAcorn(x, y, z, hidden) {
+  const mesh = makeAcorn();
+  mesh.position.set(x, y, z);
+  mesh.visible = !hidden;
+  scene.add(mesh);
+  acorns.push({ pos: new THREE.Vector3(x, y, z), mesh, hidden, revealed: !hidden, collected: false });
+}
+// 땅 위 도토리 (나무 근처)
+for (let i = 0; i < 30 && trees.length > 0; i++) {
+  const t = trees[Math.floor(hash2(i, 313) * trees.length)];
+  const a = hash2(i, 71) * Math.PI * 2, r = 1.6 + hash2(i, 37) * 2.2;
+  const ax = Math.min(SIZE - 1.5, Math.max(1.5, t.x + 0.5 + Math.cos(a) * r));
+  const az = Math.min(SIZE - 1.5, Math.max(1.5, t.z + 0.5 + Math.sin(a) * r));
+  addAcorn(ax, colH(Math.floor(ax), Math.floor(az)) + 1.3, az, false);
+}
+// 숨겨진 도토리 — 나무 꼭대기 6개
+for (let i = 0; i < 6 && i < trees.length; i++) {
+  const t = trees[Math.floor(hash2(i, 555) * trees.length)];
+  addAcorn(t.x + 0.5, t.top + 1.3, t.z + 0.5, true);
+}
+// 숨겨진 도토리 — 땅속 5개 (파야 나옴)
+for (let i = 0, placed = 0; i < 600 && placed < 5; i++) {
+  const x = 6 + Math.floor(hash2(i, 811) * (SIZE - 12));
+  const z = 6 + Math.floor(hash2(i, 227) * (SIZE - 12));
+  const h = colH(x, z);
+  if (h >= ROCK_H || getBlock(x, h, z) !== GRASS) continue;
+  addAcorn(x + 0.5, h - 2 + 0.5, z + 0.5, true);
+  placed++;
+}
+// 숨겨진 도토리 — 바위 언덕 4개
+for (let i = 0, placed = 0; i < 600 && placed < 4; i++) {
+  const x = 4 + Math.floor(hash2(i, 133) * (SIZE - 8));
+  const z = 4 + Math.floor(hash2(i, 977) * (SIZE - 8));
+  const h = colH(x, z);
+  if (h < ROCK_H) continue;
+  addAcorn(x + 0.5, h + 1.3, z + 0.5, true);
+  placed++;
+}
+const TOTAL = acorns.length, HIDDEN_TOTAL = acorns.filter(a => a.hidden).length;
+let collectedCount = 0, hiddenFound = 0;
+
+// ---------- 다람쥐 ----------
+const squirrel = new THREE.Group();
+const bodyG = new THREE.Group();
+squirrel.add(bodyG);
+{
+  const fur = new THREE.MeshLambertMaterial({ color: 0xc07a35 });
+  const furDark = new THREE.MeshLambertMaterial({ color: 0xa3652b });
+  const cream = new THREE.MeshLambertMaterial({ color: 0xe8c79a });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x2e2018 });
+  const S = (r, m) => new THREE.Mesh(new THREE.SphereGeometry(r, 12, 10), m);
+  const body = S(0.3, fur); body.scale.set(0.85, 0.8, 1.15); body.position.set(0, 0.32, 0);
+  const belly = S(0.22, cream); belly.scale.set(0.7, 0.65, 0.9); belly.position.set(0, 0.26, 0.1);
+  const head = S(0.2, fur); head.scale.set(0.9, 0.9, 0.95); head.position.set(0, 0.55, 0.28);
+  const snout = S(0.09, cream); snout.position.set(0, 0.5, 0.44);
+  const nose = S(0.032, dark); nose.position.set(0, 0.52, 0.51);
+  const eyeL = S(0.036, dark); eyeL.position.set(0.095, 0.6, 0.4);
+  const eyeR = S(0.036, dark); eyeR.position.set(-0.095, 0.6, 0.4);
+  const earL = S(0.06, fur); earL.scale.set(1, 1.35, 0.6); earL.position.set(0.11, 0.73, 0.24);
+  const earR = S(0.06, fur); earR.scale.set(1, 1.35, 0.6); earR.position.set(-0.11, 0.73, 0.24);
+  bodyG.add(body, belly, head, snout, nose, eyeL, eyeR, earL, earR);
+  for (const [lx, lz] of [[0.15, 0.18], [-0.15, 0.18], [0.15, -0.18], [-0.15, -0.18]]) {
+    const leg = S(0.07, furDark); leg.position.set(lx, 0.07, lz); bodyG.add(leg);
+  }
+  const tailG = new THREE.Group();
+  tailG.position.set(0, 0.3, -0.3);
+  const t1 = S(0.13, furDark); t1.position.set(0, 0.05, -0.08);
+  const t2 = S(0.16, furDark); t2.position.set(0, 0.3, -0.14);
+  const t3 = S(0.13, fur); t3.position.set(0, 0.52, -0.04);
+  tailG.add(t1, t2, t3);
+  bodyG.add(tailG);
+  bodyG.userData.tail = tailG;
+}
+scene.add(squirrel);
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.34, 16),
+  new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22, depthWrite: false }));
+shadow.rotation.x = -Math.PI / 2;
+scene.add(shadow);
+
+// ---------- 반짝임 (냄새 탐지) ----------
+let sparkles;
+{
+  const n = 40, arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, b = Math.random() * Math.PI, r = 0.3 + Math.random() * 0.5;
+    arr[i * 3] = Math.sin(b) * Math.cos(a) * r;
+    arr[i * 3 + 1] = Math.cos(b) * r;
+    arr[i * 3 + 2] = Math.sin(b) * Math.sin(a) * r;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  sparkles = new THREE.Points(geo, new THREE.PointsMaterial({
+    color: 0xffdf6e, size: 0.16, transparent: true, opacity: 0.9, depthTest: false }));
+  sparkles.renderOrder = 999;
+  sparkles.visible = false;
+  scene.add(sparkles);
+}
+
+// ---------- 블록 하이라이트 ----------
+const highlight = new THREE.LineSegments(
+  new THREE.EdgesGeometry(new THREE.BoxGeometry(1.002, 1.002, 1.002)),
+  new THREE.LineBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.5 }));
+highlight.visible = false;
+scene.add(highlight);
+
+// ---------- 플레이어 상태 ----------
+function findSpawn() {
+  for (let r = 0; r < 40; r++) for (let a = 0; a < 16; a++) {
+    const x = Math.floor(SIZE / 2 + Math.cos(a) * r), z = Math.floor(SIZE / 2 + Math.sin(a) * r);
+    if (colH(x, z) < ROCK_H) return new THREE.Vector3(x + 0.5, colH(x, z) + 1.05, z + 0.5);
+  }
+  return new THREE.Vector3(SIZE / 2, 24, SIZE / 2);
+}
+const pos = findSpawn();
+const spawn = pos.clone();
+const vel = new THREE.Vector3();
+let yaw = Math.PI * 0.75, pitch = 0.42;
+let onGround = false, climbing = false, gliding = false, sniffing = false;
+let modelYaw = 0;
+const inv = { [DIRT]: 0, [STONE]: 0, [WOOD]: 0, [LEAF]: 0 };
+let selType = WOOD;
+
+// ---------- 입력 ----------
+const keys = {};
+let jumpHeld = false;
+const joy = { active: false, id: -1, ox: 0, oy: 0, x: 0, y: 0 };
+const cam = { id: -1, lx: 0, ly: 0 };
+let started = false;
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  keys[e.code] = true;
+  if (e.code === 'Space') { jumpHeld = true; e.preventDefault(); }
+  if (e.code === 'KeyE') toggleSniff();
+  const nums = { Digit1: DIRT, Digit2: STONE, Digit3: WOOD, Digit4: LEAF };
+  if (nums[e.code]) selectType(nums[e.code]);
+});
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'Space') jumpHeld = false; });
+
+const canvas = renderer.domElement;
+const clampPitch = v => Math.min(1.25, Math.max(-0.3, v));
+let camDist = 5.2;
+// 데스크톱: 드래그로 시점, 트랙패드 두 손가락 스와이프로 시점, 핀치로 줌
+let dragging = false, dragMoved = 0, lastMX = 0, lastMY = 0;
+canvas.addEventListener('mousedown', e => {
+  if (!started) return;
+  if (e.button === 0) { dragging = true; dragMoved = 0; lastMX = e.clientX; lastMY = e.clientY; }
+  if (e.button === 2) placeBlock();
+});
+addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const dx = e.clientX - lastMX, dy = e.clientY - lastMY;
+  dragMoved += Math.abs(dx) + Math.abs(dy);
+  yaw -= dx * 0.005;
+  pitch = clampPitch(pitch + dy * 0.005);
+  lastMX = e.clientX; lastMY = e.clientY;
+});
+addEventListener('mouseup', e => {
+  if (e.button !== 0 || !dragging) return;
+  dragging = false;
+  if (dragMoved < 6 && started) digBlock();  // 움직임 없는 클릭 = 캐기
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (!started) return;
+  if (e.ctrlKey) { camDist = Math.min(9, Math.max(3, camDist + e.deltaY * 0.05)); return; }
+  yaw += e.deltaX * 0.003;
+  pitch = clampPitch(pitch - e.deltaY * 0.003);
+}, { passive: false });
+addEventListener('contextmenu', e => e.preventDefault());
+
+// 터치: 왼쪽 = 조이스틱, 오른쪽 = 카메라
+const joyBase = document.getElementById('joyBase'), joyThumb = document.getElementById('joyThumb');
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.clientX < innerWidth * 0.45 && !joy.active) {
+      joy.active = true; joy.id = t.identifier; joy.ox = t.clientX; joy.oy = t.clientY; joy.x = 0; joy.y = 0;
+      joyBase.style.display = 'block';
+      joyBase.style.left = (t.clientX - 55) + 'px'; joyBase.style.top = (t.clientY - 55) + 'px';
+      joyBase.style.position = 'fixed';
+      joyThumb.style.display = 'block';
+      joyThumb.style.left = (t.clientX - 24) + 'px'; joyThumb.style.top = (t.clientY - 24) + 'px';
+    } else if (cam.id === -1) {
+      cam.id = t.identifier; cam.lx = t.clientX; cam.ly = t.clientY;
+    }
+  }
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    if (t.identifier === joy.id) {
+      let dx = t.clientX - joy.ox, dy = t.clientY - joy.oy;
+      const len = Math.hypot(dx, dy), max = 46;
+      if (len > max) { dx *= max / len; dy *= max / len; }
+      joy.x = dx / max; joy.y = dy / max;
+      joyThumb.style.left = (joy.ox + dx - 24) + 'px'; joyThumb.style.top = (joy.oy + dy - 24) + 'px';
+    } else if (t.identifier === cam.id) {
+      yaw -= (t.clientX - cam.lx) * 0.006;
+      pitch = Math.min(1.25, Math.max(-0.3, pitch + (t.clientY - cam.ly) * 0.006));
+      cam.lx = t.clientX; cam.ly = t.clientY;
+    }
+  }
+}, { passive: false });
+canvas.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) {
+    if (t.identifier === joy.id) {
+      joy.active = false; joy.id = -1; joy.x = 0; joy.y = 0;
+      joyBase.style.display = 'none'; joyThumb.style.display = 'none';
+    } else if (t.identifier === cam.id) cam.id = -1;
+  }
+});
+canvas.addEventListener('touchcancel', e => {
+  joy.active = false; joy.id = -1; joy.x = 0; joy.y = 0; cam.id = -1;
+  joyBase.style.display = 'none'; joyThumb.style.display = 'none';
+});
+
+function bindBtn(id, down, up) {
+  const el = document.getElementById(id);
+  el.addEventListener('touchstart', e => { e.preventDefault(); e.stopPropagation(); down(); }, { passive: false });
+  if (up) el.addEventListener('touchend', e => { e.preventDefault(); up(); });
+  return el;
+}
+bindBtn('btnJump', () => { jumpHeld = true; }, () => { jumpHeld = false; });
+const sniffBtn = bindBtn('btnSniff', () => toggleSniff());
+bindBtn('btnDig', () => digBlock());
+bindBtn('btnPlace', () => placeBlock());
+
+// ---------- UI ----------
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg, dur = 2400) {
+  toastEl.textContent = msg;
+  toastEl.style.opacity = 1;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.style.opacity = 0; }, dur);
+}
+const NAMES = { [DIRT]: '흙', [STONE]: '돌', [WOOD]: '가지', [LEAF]: '잎' };
+const SLOT_COLORS = { [DIRT]: '#8a6642', [STONE]: '#9d9da4', [WOOD]: '#8a5a33', [LEAF]: '#55a04b' };
+const invBar = document.getElementById('invBar');
+const slotEls = {};
+for (const t of [DIRT, STONE, WOOD, LEAF]) {
+  const el = document.createElement('div');
+  el.className = 'slot';
+  el.style.background = SLOT_COLORS[t];
+  el.innerHTML = `<span>${NAMES[t]}</span><span class="cnt">0</span>`;
+  el.addEventListener('pointerdown', e => { e.preventDefault(); selectType(t); });
+  invBar.appendChild(el);
+  slotEls[t] = el;
+}
+function selectType(t) {
+  selType = t;
+  for (const k in slotEls) slotEls[k].classList.toggle('sel', +k === t);
+}
+function updateInv() { for (const t in slotEls) slotEls[t].querySelector('.cnt').textContent = inv[t]; }
+selectType(WOOD);
+
+const hudCount = document.getElementById('acornCount'), hudHidden = document.getElementById('hiddenCount');
+document.getElementById('acornTotal').textContent = TOTAL;
+document.getElementById('hiddenTotal').textContent = HIDDEN_TOTAL;
+const sniffHint = document.getElementById('sniffHint');
+function toggleSniff() {
+  sniffing = !sniffing;
+  sniffBtn.classList.toggle('on', sniffing);
+  sniffHint.style.display = sniffing ? 'block' : 'none';
+  sparkles.visible = false;
+}
+
+document.getElementById('controlsHelp').innerHTML = IS_TOUCH
+  ? '👈 왼쪽 화면 드래그 — 이동<br>👉 오른쪽 화면 드래그 — 시점<br>🦘 <b>점프</b> 꾹 누르면 활강 · 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>냄새</b>로 숨겨진 도토리 탐지<br>⛏️ <b>캐기/놓기</b>로 재료를 모아 집을 지어요'
+  : '🖱️ 트랙패드 <b>두 손가락 스와이프</b> 또는 드래그 — 시점 · 핀치 — 줌<br>🏃 <b>WASD</b> 이동 · <b>Space</b> 점프, 공중에서 꾹 누르면 활강<br>🌳 나무 쪽으로 걸으면 타고 올라가요<br>👃 <b>E</b> — 냄새로 숨겨진 도토리 탐지<br>⛏️ 클릭 캐기 · 우클릭 놓기 · <b>1~4</b> 재료 선택';
+const startBtn = document.getElementById('startBtn');
+function startGame() {
+  document.getElementById('splash').style.display = 'none';
+  started = true;
+  if (IS_TOUCH) for (const el of document.querySelectorAll('.tbtn')) el.style.display = 'flex';
+  toast(`숲 어딘가에 도토리 ${TOTAL}개가 있어요! 그중 ${HIDDEN_TOTAL}개는 꽁꽁 숨겨져 있대요 🌰`, 4000);
+}
+startBtn.addEventListener('click', startGame);
+startBtn.addEventListener('touchend', e => { e.preventDefault(); startGame(); });
+window.__gameLoaded = true;
+startBtn.disabled = false;
+startBtn.textContent = '시작하기';
+
+// ---------- 캐기 / 놓기 ----------
+function raycastBlock(maxDist = 5) {
+  const dir = new THREE.Vector3();
+  camera.getWorldDirection(dir);
+  const o = new THREE.Vector3(pos.x, pos.y + 0.55, pos.z);
+  let x = Math.floor(o.x), y = Math.floor(o.y), z = Math.floor(o.z);
+  const sx = dir.x > 0 ? 1 : -1, sy = dir.y > 0 ? 1 : -1, sz = dir.z > 0 ? 1 : -1;
+  const dx = Math.abs(dir.x), dy = Math.abs(dir.y), dz = Math.abs(dir.z);
+  let tx = dx > 1e-8 ? ((sx > 0 ? x + 1 - o.x : o.x - x) / dx) : Infinity;
+  let ty = dy > 1e-8 ? ((sy > 0 ? y + 1 - o.y : o.y - y) / dy) : Infinity;
+  let tz = dz > 1e-8 ? ((sz > 0 ? z + 1 - o.z : o.z - z) / dz) : Infinity;
+  const ddx = dx > 1e-8 ? 1 / dx : Infinity, ddy = dy > 1e-8 ? 1 / dy : Infinity, ddz = dz > 1e-8 ? 1 / dz : Infinity;
+  let px = x, py = y, pz = z, dist = 0;
+  for (let i = 0; i < 64; i++) {
+    px = x; py = y; pz = z;
+    if (tx < ty && tx < tz) { x += sx; dist = tx; tx += ddx; }
+    else if (ty < tz) { y += sy; dist = ty; ty += ddy; }
+    else { z += sz; dist = tz; tz += ddz; }
+    if (dist > maxDist) return null;
+    if (solid(x, y, z)) return { x, y, z, px, py, pz };
+  }
+  return null;
+}
+function digBlock() {
+  const hit = raycastBlock();
+  if (!hit || hit.y <= 0) return;
+  const t = getBlock(hit.x, hit.y, hit.z);
+  const gain = t === GRASS ? DIRT : t;
+  inv[gain]++;
+  setBlock(hit.x, hit.y, hit.z, AIR);
+  updateInv();
+}
+function placeBlock() {
+  if (inv[selType] <= 0) { toast(`${NAMES[selType]}이(가) 없어요 — 블록을 캐서 모아요!`); return; }
+  const hit = raycastBlock();
+  if (!hit) return;
+  const { px, py, pz } = hit;
+  if (px < 0 || pz < 0 || px >= SIZE || pz >= SIZE || py < 1 || py >= HEIGHT) return;
+  // 자기 몸과 겹치면 설치 불가
+  if (px + 1 > pos.x - HALF && px < pos.x + HALF &&
+      py + 1 > pos.y && py < pos.y + PH &&
+      pz + 1 > pos.z - HALF && pz < pos.z + HALF) return;
+  inv[selType]--;
+  setBlock(px, py, pz, selType);
+  updateInv();
+}
+
+// ---------- 물리 ----------
+function moveAxis(axis, amt) {
+  if (!amt) return;
+  pos[axis] += amt;
+  const x0 = Math.floor(pos.x - HALF), x1 = Math.floor(pos.x + HALF);
+  const y0 = Math.floor(pos.y), y1 = Math.floor(pos.y + PH);
+  const z0 = Math.floor(pos.z - HALF), z1 = Math.floor(pos.z + HALF);
+  for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
+    if (!solid(x, y, z)) continue;
+    if (axis === 'x') { pos.x = amt > 0 ? x - HALF - 0.001 : x + 1 + HALF + 0.001; vel.x = 0; }
+    else if (axis === 'z') { pos.z = amt > 0 ? z - HALF - 0.001 : z + 1 + HALF + 0.001; vel.z = 0; }
+    else {
+      if (amt > 0) { pos.y = y - PH - 0.001; vel.y = 0; }
+      else { pos.y = y + 1 + 0.001; vel.y = 0; onGround = true; }
+    }
+    return;
+  }
+}
+function groundYBelow() {
+  const x = Math.floor(pos.x), z = Math.floor(pos.z);
+  for (let y = Math.min(HEIGHT - 1, Math.floor(pos.y)); y >= 0; y--)
+    if (solid(x, y, z)) return y + 1;
+  return 0;
+}
+
+// ---------- 메인 루프 ----------
+const clock = new THREE.Clock();
+let time = 0;
+let jumpFxT = -1;
+const jumpTextEl = document.getElementById('jumpText');
+window.__dbg = () => ({ pos: pos.toArray().map(v => +v.toFixed(2)), yaw: +yaw.toFixed(3), pitch: +pitch.toFixed(3), camDist: +camDist.toFixed(2), onGround, climbing, gliding, collected: collectedCount, started });
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  time += dt;
+
+  // 이동 입력 (카메라 기준)
+  let ix = 0, iz = 0;
+  if (started) {
+    if (keys.KeyW || keys.ArrowUp) iz += 1;
+    if (keys.KeyS || keys.ArrowDown) iz -= 1;
+    if (keys.KeyA || keys.ArrowLeft) ix -= 1;
+    if (keys.KeyD || keys.ArrowRight) ix += 1;
+    ix += joy.x; iz -= joy.y;
+  }
+  let mlen = Math.hypot(ix, iz);
+  if (mlen > 1) { ix /= mlen; iz /= mlen; mlen = 1; }
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+  const mdx = fx * iz + rx * ix;
+  const mdz = fz * iz + rz * ix;
+
+  // 나무 타기 판정: 진행 방향의 나무 기둥
+  climbing = false;
+  if (mlen > 0.15) {
+    const nx = mdx / (Math.hypot(mdx, mdz) || 1), nz = mdz / (Math.hypot(mdx, mdz) || 1);
+    const cx = Math.floor(pos.x + nx * 0.45), cz = Math.floor(pos.z + nz * 0.45);
+    for (const dy of [0.15, 0.55]) {
+      if (getBlock(cx, Math.floor(pos.y + dy), cz) === WOOD) { climbing = true; break; }
+    }
+  }
+
+  gliding = false;
+  if (climbing) {
+    vel.y = mlen > 0.15 ? CLIMB_V : 0;
+  } else {
+    vel.y -= G * dt;
+    if (jumpHeld && !onGround && vel.y < GLIDE_FALL) { vel.y = GLIDE_FALL; gliding = true; }
+  }
+  if (jumpHeld && onGround) { vel.y = JUMP_V; onGround = false; jumpFxT = time; }
+
+  const spd = climbing ? SPEED * 0.55 : (gliding ? SPEED * 1.2 : SPEED);
+  vel.x = mdx * spd; vel.z = mdz * spd;
+
+  onGround = false;
+  moveAxis('x', vel.x * dt);
+  moveAxis('z', vel.z * dt);
+  moveAxis('y', vel.y * dt);
+  pos.x = Math.min(SIZE - 0.5, Math.max(0.5, pos.x));
+  pos.z = Math.min(SIZE - 0.5, Math.max(0.5, pos.z));
+  if (pos.y < -5) { pos.copy(spawn); vel.set(0, 0, 0); }
+
+  // 다람쥐 모델
+  squirrel.position.copy(pos);
+  if (mlen > 0.05) {
+    const target = Math.atan2(mdx, mdz);
+    let d = target - modelYaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    modelYaw += d * Math.min(1, dt * 12);
+  }
+  squirrel.rotation.y = modelYaw;
+  const tail = bodyG.userData.tail;
+  if (gliding) {
+    bodyG.rotation.x = -0.5;
+    tail.rotation.x = 1.1;
+  } else if (climbing) {
+    bodyG.rotation.x = -1.1;
+    tail.rotation.x = 0.4;
+  } else {
+    bodyG.rotation.x = 0;
+    tail.rotation.x = Math.sin(time * (mlen > 0.05 ? 10 : 2.5)) * 0.25;
+    bodyG.position.y = mlen > 0.05 && onGround ? Math.abs(Math.sin(time * 10)) * 0.08 : 0;
+  }
+
+  // 그림자
+  shadow.position.set(pos.x, groundYBelow() + 0.02, pos.z);
+
+  // 카메라
+  const cd = camDist, ch = Math.sin(pitch) * cd + 1.1, cr = Math.cos(pitch) * cd;
+  const camTarget = new THREE.Vector3(pos.x, pos.y + 0.7, pos.z);
+  const desired = new THREE.Vector3(pos.x + Math.sin(yaw) * cr, pos.y + 0.7 + ch, pos.z + Math.cos(yaw) * cr);
+  const cdir = desired.clone().sub(camTarget);
+  const clen = cdir.length(); cdir.normalize();
+  let cdist = clen;
+  for (let s = 0.4; s < clen; s += 0.25) {
+    const p = camTarget.clone().addScaledVector(cdir, s);
+    if (solid(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z))) { cdist = Math.max(0.8, s - 0.35); break; }
+  }
+  camera.position.copy(camTarget).addScaledVector(cdir, cdist);
+  camera.lookAt(camTarget);
+
+  // 점프 텍스트 "짜암푸!" — 다람쥐 머리 위를 따라다니며 떠올랐다 사라짐
+  const jumpAge = time - jumpFxT;
+  if (jumpFxT >= 0 && jumpAge < 0.8) {
+    const p = jumpAge / 0.8;
+    const v = new THREE.Vector3(pos.x, pos.y + 1.05 + p * 0.6, pos.z).project(camera);
+    if (v.z < 1) {
+      jumpTextEl.style.display = 'block';
+      jumpTextEl.style.left = (v.x * 0.5 + 0.5) * innerWidth + 'px';
+      jumpTextEl.style.top = (-v.y * 0.5 + 0.5) * innerHeight + 'px';
+      jumpTextEl.style.opacity = p < 0.6 ? 1 : (1 - (p - 0.6) / 0.4);
+    } else jumpTextEl.style.display = 'none';
+  } else jumpTextEl.style.display = 'none';
+
+  // 블록 하이라이트
+  if (started) {
+    const hit = raycastBlock();
+    highlight.visible = !!hit;
+    if (hit) highlight.position.set(hit.x + 0.5, hit.y + 0.5, hit.z + 0.5);
+  }
+
+  // 도토리: 애니메이션 / 발견 / 수집
+  let nearestHidden = null, nearestD = 35;
+  for (const a of acorns) {
+    if (a.collected) continue;
+    a.mesh.rotation.y += dt * 1.2;
+    a.mesh.position.y = a.pos.y + Math.sin(time * 2 + a.pos.x) * 0.05;
+    const d = a.pos.distanceTo(pos);
+    if (a.hidden && !a.revealed) {
+      if (d < nearestD) { nearestD = d; nearestHidden = a; }
+      if (d < 1.8) {
+        a.revealed = true;
+        a.mesh.visible = true;
+        toast('✨ 숨겨진 도토리 발견!');
+      }
+      continue;
+    }
+    if (d < 0.95) {
+      a.collected = true;
+      scene.remove(a.mesh);
+      collectedCount++;
+      if (a.hidden) hiddenFound++;
+      hudCount.textContent = collectedCount;
+      hudHidden.textContent = hiddenFound;
+      if (collectedCount === TOTAL) toast('🎉 숲의 도토리를 전부 찾았어요! 대단해요!', 6000);
+    }
+  }
+
+  // 냄새 탐지
+  if (sniffing && nearestHidden) {
+    sparkles.visible = true;
+    sparkles.position.copy(nearestHidden.pos);
+    sparkles.rotation.y += dt * 2;
+    sparkles.material.opacity = 0.55 + Math.sin(time * 6) * 0.35;
+    sniffHint.textContent = `👃 도토리 향기가 나요… ${Math.max(1, Math.round(nearestD))}m`;
+  } else if (sniffing) {
+    sparkles.visible = false;
+    sniffHint.textContent = '👃 킁킁… 근처엔 숨은 도토리가 없어요';
+  } else {
+    sparkles.visible = false;
+  }
+
+  // 구름
+  for (const c of clouds) {
+    c.position.x += c.userData.speed * dt;
+    if (c.position.x > SIZE + 25) c.position.x = -25;
+  }
+
+  renderer.render(scene, camera);
+}
+frame();
+</script>
+</body>
+</html>
